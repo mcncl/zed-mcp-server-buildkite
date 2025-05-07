@@ -1,0 +1,8 @@
+id = "buildkite-mcp"
+name = "Buildkite MCP Integration"
+version = "0.1.0"
+schema_version = 1
+authors = ["Ben McNicholl <git@benmcnicholl.com>"]
+description = "Buildkite Integration for Zed - Access your Buildkite CI/CD pipelines and builds directly from your editor"
+repository = "https://github.com/mcncl/zed-buildkite-mcp-extension"
+wasm = "target/wasm32-wasi/release/zed_buildkite_mcp.wasm"
