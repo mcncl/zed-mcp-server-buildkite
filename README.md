@@ -101,4 +101,4 @@ To develop this extension:
 
 ## License
 
-MIT License - See the [LICENSE](../LICENSE) file for details.
+MIT License - See the [LICENSE](./LICENSE) file for details.
