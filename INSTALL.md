@@ -74,9 +74,6 @@ If using this method, ensure that the `buildkite-mcp-server` binary is in your P
 3. Add the following content to `settings.json`, replacing `your-buildkite-token-here` with your actual Buildkite API token:
    ```json
    {
-     "extensions": {
-       "buildkite-mcp": true
-     },
      "context_servers": {
        "buildkite-mcp": {
          "settings": {

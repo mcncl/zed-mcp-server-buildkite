@@ -1,7 +1,4 @@
 {
-  "extensions": {
-    "mcp-server-buildkite": true
-  },
   "context_servers": {
     "mcp-server-buildkite": {
       "settings": {
