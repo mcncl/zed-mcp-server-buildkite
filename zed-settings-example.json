@@ -1,9 +1,9 @@
 {
   "extensions": {
-    "buildkite-mcp": true
+    "mcp-server-buildkite": true
   },
   "context_servers": {
-    "buildkite-mcp": {
+    "mcp-server-buildkite": {
       "settings": {
         "buildkite_api_token": "your-buildkite-token-here",
         "use_docker": true
