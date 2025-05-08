@@ -21,17 +21,17 @@ impl zed::Extension for BuildkiteMCPExtension {
         _context_server_id: &ContextServerId,
         project: &Project,
     ) -> Result<Command> {
-        let settings = ContextServerSettings::for_project("buildkite-mcp", project)?;
+        let settings = ContextServerSettings::for_project("mcp-server-buildkite", project)?;
         let Some(settings) = settings.settings else {
             return Err("missing `buildkite_api_token` setting".into());
         };
-        
+
         let settings: BuildkiteContextServerSettings =
             serde_json::from_value(settings).map_err(|e| e.to_string())?;
-        
+
         // Check if we should use Docker (default to true for easier setup)
         let use_docker = settings.use_docker.unwrap_or(true);
-        
+
         if use_docker {
             // Use Docker to run the MCP server
             Ok(Command {

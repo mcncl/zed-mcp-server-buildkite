@@ -43,20 +43,20 @@ cargo build --target "$WASM_TARGET" --release
 
 # Check if the build was successful
 if [ $? -eq 0 ]; then
-    WASM_PATH="target/$WASM_TARGET/release/zed_buildkite_mcp.wasm"
+    WASM_PATH="target/$WASM_TARGET/release/mcp_server_buildkite.wasm"
     if [ -f "$WASM_PATH" ]; then
         echo -e "${GREEN}Build successful!${NC}"
         echo -e "${GREEN}WASM file: ${YELLOW}${WASM_PATH}${NC}"
         echo -e "${GREEN}To install in Zed, go to: File > Extensions > Install From Path${NC}"
-        
+
         # Create the dist directory if it doesn't exist
         mkdir -p dist
-        
+
         # Copy the extension files to the dist directory
         cp "$WASM_PATH" dist/
         cp extension.toml dist/
         cp README.md dist/
-        
+
         echo -e "${GREEN}Installation files copied to dist/ directory${NC}"
     else
         echo -e "${RED}Build was successful but WASM file not found at: ${WASM_PATH}${NC}"
