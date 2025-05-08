@@ -1,9 +1,9 @@
 id = "mcp-server-buildkite"
-name = "Buildkite MCP Integration"
-version = "0.1.0"
+name = "Buildkite MCP"
+version = "0.0.1"
+description = "Model Context Protocol Server for Buildkite"
 schema_version = 1
 authors = ["Ben McNicholl <git@benmcnicholl.com>"]
-description = "Model Context Protocol Server for Buildkite"
 repository = "https://github.com/mcncl/zed-mcp-server-buildkite"
 
 [context_servers.mcp-server-buildkite]
