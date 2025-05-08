@@ -1,6 +1,6 @@
-# Installing the Buildkite MCP Extension for Zed
+# Installation Instructions Deprecated
 
-This guide will walk you through installing and configuring the Buildkite MCP extension for Zed.
+All installation and configuration instructions are now in [README.md](./README.md). Please refer there for up-to-date guidance.
 
 ## Prerequisites
 
