@@ -6,6 +6,9 @@ use zed_extension_api::{
     self as zed, serde_json, Command, ContextServerConfiguration, ContextServerId, Project, Result,
 };
 
+#[cfg(test)]
+mod tests;
+
 const REPO_NAME: &str = "buildkite/buildkite-mcp-server";
 const BINARY_NAME: &str = "buildkite-mcp-server";
 
