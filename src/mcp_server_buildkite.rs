@@ -70,7 +70,7 @@ impl BuildkiteMCPExtension {
             .map_err(|err| format!("failed to create directory '{version_dir}': {err}"))?;
         let binary_path = format!("{}/{}", version_dir, BINARY_NAME);
 
-        if fs::metadata(path).is_ok_and(|stat| stat.is_file()) {
+        if fs::metadata(&binary_path).is_ok_and(|stat| stat.is_file()) {
             let file_kind = match platform {
                 zed::Os::Mac | zed::Os::Linux => zed::DownloadedFileType::GzipTar,
                 zed::Os::Windows => zed::DownloadedFileType::Zip,
