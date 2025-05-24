@@ -67,28 +67,29 @@ impl BuildkiteMCPExtension {
 
         let version_dir = format!("{BINARY_NAME}-{}", release.version);
         fs::create_dir_all(&version_dir)
-            .map_err(|err| format!("failed to create directory '{version_dir}': {err}"))?;
+            .map_err(|err| format!("failed to create directory '{}': {}", version_dir, err))?;
         let binary_path = format!("{}/{}", version_dir, BINARY_NAME);
 
-        if fs::metadata(&binary_path).is_ok_and(|stat| stat.is_file()) {
+        // Download and set up the binary if it doesn't already exist at the path.
+        if !fs::metadata(&binary_path).is_ok_and(|stat| stat.is_file()) {
             let file_kind = match platform {
                 zed::Os::Mac | zed::Os::Linux => zed::DownloadedFileType::GzipTar,
                 zed::Os::Windows => zed::DownloadedFileType::Zip,
             };
 
             zed::download_file(&asset.download_url, &version_dir, file_kind)
-                .map_err(|e| format!("failed to download file: {e}"))?;
+                .map_err(|e| format!("failed to download file: {}", e))?;
 
             zed::make_file_executable(&binary_path)?;
+        }
 
-            // Removes old versions
-            let entries =
-                fs::read_dir(".").map_err(|e| format!("failed to list working directory {e}"))?;
-            for entry in entries {
-                let entry = entry.map_err(|e| format!("failed to load directory entry {e}"))?;
-                if entry.file_name().to_str() != Some(&version_dir) {
-                    fs::remove_dir_all(entry.path()).ok();
-                }
+        // Cleanup old versions. This can run regardless of whether we just downloaded.
+        let entries =
+            fs::read_dir(".").map_err(|e| format!("failed to list working directory {}", e))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("failed to load directory entry {}", e))?;
+            if entry.file_name().to_str() != Some(&version_dir) {
+                fs::remove_dir_all(entry.path()).ok();
             }
         }
 
