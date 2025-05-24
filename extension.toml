@@ -1,6 +1,6 @@
 id = "mcp-server-buildkite"
 name = "Buildkite MCP"
-version = "0.0.2"
+version = "0.0.3"
 description = "Model Context Protocol Server for Buildkite"
 schema_version = 1
 authors = ["Ben McNicholl <git@benmcnicholl.com>"]
