@@ -1,10 +1,77 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
+use std::error::Error;
+use std::fmt;
 use std::fs;
 use zed::settings::ContextServerSettings;
 use zed_extension_api::{
     self as zed, serde_json, Command, ContextServerConfiguration, ContextServerId, Project, Result,
 };
+use log::{info, warn, error};
+
+// Custom Error Enum
+#[derive(Debug)]
+enum ExtensionError {
+    ProjectOrSettingsMissing(String),
+    SettingsParseError(serde_json::Error),
+    IoError(std::io::Error),
+    ZedError(String), // For errors from zed_extension_api
+    AssetNotFound(String),
+    UnsupportedPlatform(String), // Kept for future use, though asset_triplet_for_host was removed
+    ReleaseNotFound(String),
+    DownloadFailed(String),
+    InternalError(String), // Generic catch-all
+}
+
+// Implement std::fmt::Display for ExtensionError
+impl std::fmt::Display for ExtensionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExtensionError::ProjectOrSettingsMissing(msg) => {
+                write!(f, "Project or settings missing: {}", msg)
+            }
+            ExtensionError::SettingsParseError(err) => write!(f, "Settings parse error: {}", err),
+            ExtensionError::IoError(err) => write!(f, "IO error: {}", err),
+            ExtensionError::ZedError(err) => write!(f, "Zed API error: {}", err),
+            ExtensionError::AssetNotFound(name) => write!(f, "Asset not found: {}", name),
+            ExtensionError::UnsupportedPlatform(platform) => {
+                write!(f, "Unsupported platform: {}", platform)
+            }
+            ExtensionError::ReleaseNotFound(repo) => {
+                write!(f, "Release not found for repo: {}", repo)
+            }
+            ExtensionError::DownloadFailed(url) => write!(f, "Download failed for URL: {}", url),
+            ExtensionError::InternalError(msg) => write!(f, "Internal error: {}", msg),
+        }
+    }
+}
+
+// Implement std::error::Error for ExtensionError
+impl std::error::Error for ExtensionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ExtensionError::SettingsParseError(err) => Some(err),
+            ExtensionError::IoError(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+// Implement From conversions for common error types
+impl From<std::io::Error> for ExtensionError {
+    fn from(err: std::io::Error) -> Self {
+        ExtensionError::IoError(err)
+    }
+}
+
+impl From<serde_json::Error> for ExtensionError {
+    fn from(err: serde_json::Error) -> Self {
+        ExtensionError::SettingsParseError(err)
+    }
+}
+
+// Define a type alias for Result
+type ExtensionResult<T> = std::result::Result<T, ExtensionError>;
 
 #[cfg(test)]
 mod tests;
@@ -25,7 +92,7 @@ impl BuildkiteMCPExtension {
     fn context_server_binary_path(
         &mut self,
         _context_server_id: &ContextServerId,
-    ) -> Result<String> {
+    ) -> ExtensionResult<String> {
         if let Some(path) = &self.cached_binary_path {
             if fs::metadata(path).is_ok_and(|stat| stat.is_file()) {
                 return Ok(path.clone());
@@ -38,36 +105,43 @@ impl BuildkiteMCPExtension {
                 require_assets: true,
                 pre_release: false,
             },
-        )?;
+        )
+        .map_err(|e| ExtensionError::ReleaseNotFound(format!("Failed to get latest release for {}: {}", REPO_NAME, e)))?;
 
         let (platform, arch) = zed::current_platform();
+        let arch_str = match arch {
+            zed::Architecture::Aarch64 => "arm64",
+            zed::Architecture::X86 => "i386",
+            zed::Architecture::X8664 => "x86_64",
+            _ => return Err(ExtensionError::UnsupportedPlatform(format!("architecture {:?}", arch))),
+        };
+        let os_str = match platform {
+            zed::Os::Mac => "Darwin",
+            zed::Os::Linux => "Linux",
+            zed::Os::Windows => "Windows",
+            _ => return Err(ExtensionError::UnsupportedPlatform(format!("OS {:?}", platform))),
+        };
+        let ext_str = match platform {
+            zed::Os::Mac | zed::Os::Linux => "tar.gz",
+            zed::Os::Windows => "zip",
+            _ => return Err(ExtensionError::UnsupportedPlatform(format!("OS for extension {:?}", platform))),
+        };
+
         let asset_name = format!(
             "{BINARY_NAME}_{os}_{arch}.{ext}",
-            arch = match arch {
-                zed::Architecture::Aarch64 => "arm64",
-                zed::Architecture::X86 => "i386",
-                zed::Architecture::X8664 => "x86_64",
-            },
-            os = match platform {
-                zed::Os::Mac => "Darwin",
-                zed::Os::Linux => "Linux",
-                zed::Os::Windows => "Windows",
-            },
-            ext = match platform {
-                zed::Os::Mac | zed::Os::Linux => "tar.gz",
-                zed::Os::Windows => "zip",
-            }
+            os = os_str,
+            arch = arch_str,
+            ext = ext_str
         );
 
         let asset = release
             .assets
             .iter()
             .find(|asset| asset.name == asset_name)
-            .ok_or_else(|| format!("no asset found matching {:?}", asset_name))?;
+            .ok_or_else(|| ExtensionError::AssetNotFound(asset_name.clone()))?;
 
         let version_dir = format!("{BINARY_NAME}-{}", release.version);
-        fs::create_dir_all(&version_dir)
-            .map_err(|err| format!("failed to create directory '{}': {}", version_dir, err))?;
+        fs::create_dir_all(&version_dir)?;
         let binary_path = format!("{}/{}", version_dir, BINARY_NAME);
 
         // Download and set up the binary if it doesn't already exist at the path.
@@ -75,20 +149,24 @@ impl BuildkiteMCPExtension {
             let file_kind = match platform {
                 zed::Os::Mac | zed::Os::Linux => zed::DownloadedFileType::GzipTar,
                 zed::Os::Windows => zed::DownloadedFileType::Zip,
+                // This case should ideally be caught by the ext_str match above,
+                // but as a safeguard or if logic changes:
+                _ => return Err(ExtensionError::UnsupportedPlatform(format!("OS for file kind {:?}", platform))),
             };
 
             zed::download_file(&asset.download_url, &version_dir, file_kind)
-                .map_err(|e| format!("failed to download file: {}", e))?;
+                .map_err(|e| ExtensionError::DownloadFailed(format!("Failed to download {} from {}: {}",BINARY_NAME, asset.download_url, e)))?;
 
-            zed::make_file_executable(&binary_path)?;
+            zed::make_file_executable(&binary_path)
+                .map_err(|e| ExtensionError::ZedError(format!("Failed to make file executable {}: {}", binary_path, e)))?;
         }
 
         // Cleanup old versions. This can run regardless of whether we just downloaded.
-        let entries =
-            fs::read_dir(".").map_err(|e| format!("failed to list working directory {}", e))?;
+        let entries = fs::read_dir(".")?;
         for entry in entries {
-            let entry = entry.map_err(|e| format!("failed to load directory entry {}", e))?;
+            let entry = entry?;
             if entry.file_name().to_str() != Some(&version_dir) {
+                // Ignoring result of remove_dir_all as it's a cleanup task
                 fs::remove_dir_all(entry.path()).ok();
             }
         }
@@ -110,23 +188,29 @@ impl zed::Extension for BuildkiteMCPExtension {
         _context_server_id: &ContextServerId,
         project: &Project,
     ) -> Result<Command> {
-        eprintln!("Buildkite MCP: context_server_command called");
-        let settings = ContextServerSettings::for_project("mcp-server-buildkite", project)?;
-        let Some(settings) = settings.settings else {
-            eprintln!("Buildkite MCP: missing `buildkite_api_token` setting");
-            return Err("missing `buildkite_api_token` setting".into());
+        info!("Buildkite MCP: context_server_command called");
+        let settings_container = ContextServerSettings::for_project("mcp-server-buildkite", project)
+            .map_err(|e| ExtensionError::ZedError(format!("Failed to get settings for project mcp-server-buildkite: {}", e)).to_string())?;
+
+        let Some(settings_value) = settings_container.settings else {
+            error!("Buildkite MCP: missing `buildkite_api_token` setting for mcp-server-buildkite");
+            return Err(ExtensionError::ProjectOrSettingsMissing(
+                "Buildkite API token is not configured. Please set it in the extension settings (mcp-server-buildkite).".to_string()
+            ).to_string().into());
         };
-        let settings: BuildkiteContextServerSettings = match serde_json::from_value(settings) {
+
+        let settings: BuildkiteContextServerSettings = match serde_json::from_value(settings_value) {
             Ok(val) => val,
             Err(e) => {
-                eprintln!("Buildkite MCP: error parsing settings: {}", e);
-                return Err(e.to_string());
+                error!("Buildkite MCP: error parsing settings: {}", e);
+                return Err(ExtensionError::SettingsParseError(e).to_string().into());
             }
         };
-        eprintln!("Buildkite MCP: parsed settings: {:?}", settings);
+        info!("Buildkite MCP: parsed settings: {:?}", settings);
 
-        let binary_path = self.context_server_binary_path(_context_server_id)?;
-        eprintln!("Buildkite MCP: launching binary at {}", binary_path);
+        let binary_path = self.context_server_binary_path(_context_server_id)
+            .map_err(|e| e.to_string())?;
+        info!("Buildkite MCP: launching binary at {}", binary_path);
 
         Ok(Command {
             command: binary_path,
@@ -145,7 +229,7 @@ impl zed::Extension for BuildkiteMCPExtension {
         let default_settings = include_str!("../configuration/default_settings.jsonc").to_string();
         let settings_schema =
             serde_json::to_string(&schemars::schema_for!(BuildkiteContextServerSettings))
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| ExtensionError::SettingsParseError(e).to_string())?;
 
         Ok(Some(ContextServerConfiguration {
             installation_instructions,
